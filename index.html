@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RGB LED Studio</title>
+  <style>
+    :root {
+      --bg-color: #0f172a;
+      --card-bg: #1e293b;
+      --accent-cyan: #38bdf8;
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+    }
+
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background-color: var(--bg-color);
+      color: var(--text-main);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      margin: 0;
+    }
+
+    .container {
+      background: var(--card-bg);
+      width: 100%;
+      max-width: 440px;
+      padding: 30px;
+      border-radius: 16px;
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    h1 {
+      font-size: 24px;
+      margin-top: 0;
+      margin-bottom: 20px;
+      text-align: center;
+      letter-spacing: 1px;
+    }
+
+    .btn-group {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 25px;
+    }
+
+    button {
+      flex: 1;
+      padding: 12px;
+      font-size: 15px;
+      font-weight: 600;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .connect-btn { background-color: var(--accent-cyan); color: #0f172a; }
+    .connect-btn:hover:not(:disabled) { background-color: #0284c7; color: white; }
+
+    .disconnect-btn { background-color: #334155; color: var(--text-muted); }
+    .disconnect-btn:hover:not(:disabled) { background-color: #ef4444; color: white; }
+
+    button:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+
+    /* Color Preview Box */
+    .preview-box {
+      width: 100%;
+      height: 100px;
+      border-radius: 12px;
+      background-color: #000000;
+      box-shadow: 0 0 20px rgba(0, 0, 0, 0.8);
+      margin-bottom: 25px;
+      transition: background-color 0.15s ease, box-shadow 0.15s ease;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    /* Color Picker Row */
+    .picker-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 25px;
+      background: rgba(0, 0, 0, 0.2);
+      padding: 10px 15px;
+      border-radius: 8px;
+    }
+
+    input[type="color"] {
+      -webkit-appearance: none;
+      border: none;
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      cursor: pointer;
+      background: none;
+    }
+
+    input[type="color"]::-webkit-color-swatch-wrapper { padding: 0; }
+    input[type="color"]::-webkit-color-swatch { border: none; border-radius: 50%; }
+
+    /* Sliders */
+    .slider-group {
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+    }
+
+    .slider-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .slider-row label {
+      width: 60px;
+      font-weight: bold;
+      font-size: 14px;
+    }
+
+    .slider-row input[type="range"] {
+      flex: 1;
+      accent-color: var(--accent-cyan);
+      cursor: pointer;
+    }
+
+    #redSlider { accent-color: #ef4444; }
+    #greenSlider { accent-color: #22c55e; }
+    #blueSlider { accent-color: #3b82f6; }
+
+    .val-num {
+      width: 35px;
+      text-align: right;
+      font-family: monospace;
+      color: var(--text-muted);
+    }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    <h1>RGB LED STUDIO</h1>
+
+    <div class="btn-group">
+      <button id="connectBtn" class="connect-btn">Connect</button>
+      <button id="disconnectBtn" class="disconnect-btn" disabled>Disconnect</button>
+    </div>
+
+    <div id="colorPreview" class="preview-box"></div>
+
+    <div class="picker-row">
+      <label for="colorPicker">Quick Color Wheel:</label>
+      <input type="color" id="colorPicker" value="#000000" disabled>
+    </div>
+
+    <div class="slider-group">
+      <div class="slider-row">
+        <label style="color: #ef4444;">RED</label>
+        <input type="range" id="redSlider" min="0" max="255" value="0" disabled>
+        <span id="rVal" class="val-num">0</span>
+      </div>
+
+      <div class="slider-row">
+        <label style="color: #22c55e;">GREEN</label>
+        <input type="range" id="greenSlider" min="0" max="255" value="0" disabled>
+        <span id="gVal" class="val-num">0</span>
+      </div>
+
+      <div class="slider-row">
+        <label style="color: #3b82f6;">BLUE</label>
+        <input type="range" id="blueSlider" min="0" max="255" value="0" disabled>
+        <span id="bVal" class="val-num">0</span>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let port;
+    let writer;
+    let textEncoder;
+    let writableStreamClosed;
+
+    const connectBtn = document.getElementById('connectBtn');
+    const disconnectBtn = document.getElementById('disconnectBtn');
+
+    const redSlider = document.getElementById('redSlider');
+    const greenSlider = document.getElementById('greenSlider');
+    const blueSlider = document.getElementById('blueSlider');
+
+    const rVal = document.getElementById('rVal');
+    const gVal = document.getElementById('gVal');
+    const bVal = document.getElementById('bVal');
+
+    const colorPicker = document.getElementById('colorPicker');
+    const colorPreview = document.getElementById('colorPreview');
+
+    // Transmit RGB values formatted as "R,G,B\n"
+    async function sendRGB(r, g, b) {
+      if (writer) {
+        try {
+          await writer.write(`${r},${g},${b}\n`);
+        } catch (err) {
+          console.warn('Write error:', err);
+        }
+      }
+    }
+
+    // Update UI Elements & Send to Hardware
+    function updateColor(r, g, b, source = 'sliders') {
+      rVal.textContent = r;
+      gVal.textContent = g;
+      bVal.textContent = b;
+
+      if (source !== 'sliders') {
+        redSlider.value = r;
+        greenSlider.value = g;
+        blueSlider.value = b;
+      }
+
+      const rgbCss = `rgb(${r}, ${g}, ${b})`;
+      colorPreview.style.backgroundColor = rgbCss;
+      colorPreview.style.boxShadow = `0 0 25px ${rgbCss}`;
+
+      if (source !== 'picker') {
+        // Convert RGB to Hex for colorPicker element
+        const hex = "#" + ((1 << 24) + (parseInt(r) << 16) + (parseInt(g) << 8) + parseInt(b)).toString(16).slice(1);
+        colorPicker.value = hex;
+      }
+
+      sendRGB(r, g, b);
+    }
+
+    // Connect to Serial Port
+    connectBtn.addEventListener('click', async () => {
+      if ('serial' in navigator) {
+        try {
+          port = await navigator.serial.requestPort();
+          await port.open({ baudRate: 9600 });
+
+          textEncoder = new TextEncoderStream();
+          writableStreamClosed = textEncoder.readable.pipeTo(port.writable);
+          writer = textEncoder.writable.getWriter();
+
+          // Enable Controls
+          connectBtn.disabled = true;
+          disconnectBtn.disabled = false;
+          redSlider.disabled = false;
+          greenSlider.disabled = false;
+          blueSlider.disabled = false;
+          colorPicker.disabled = false;
+
+        } catch (err) {
+          console.error('Error connecting:', err);
+          alert('Failed to connect: ' + err.message);
+        }
+      } else {
+        alert('Web Serial API is not supported in this browser.');
+      }
+    });
+
+    // Disconnect safely with guaranteed UI reset
+    disconnectBtn.addEventListener('click', async () => {
+      if (port) {
+        try {
+          if (writer) {
+            try { await writer.write('0,0,0\n'); } catch (e) {}
+            try { await writer.close(); } catch (e) {}
+            writer.releaseLock();
+            writer = null;
+          }
+
+          if (textEncoder) {
+            try { await textEncoder.readable.cancel(); } catch (e) {}
+            await writableStreamClosed.catch(() => {});
+          }
+
+          await port.close();
+        } catch (err) {
+          console.warn('Cleanup warning during disconnect:', err);
+        } finally {
+          port = null;
+
+          // Reset UI & Controls
+          connectBtn.disabled = false;
+          disconnectBtn.disabled = true;
+          redSlider.disabled = true;
+          greenSlider.disabled = true;
+          blueSlider.disabled = true;
+          colorPicker.disabled = true;
+
+          updateColor(0, 0, 0);
+        }
+      }
+    });
+
+    // Slider Listeners
+    [redSlider, greenSlider, blueSlider].forEach(slider => {
+      slider.addEventListener('input', () => {
+        updateColor(redSlider.value, greenSlider.value, blueSlider.value, 'sliders');
+      });
+    });
+
+    // Native Color Wheel Listener
+    colorPicker.addEventListener('input', (e) => {
+      const hex = e.target.value;
+      const r = parseInt(hex.substr(1, 2), 16);
+      const g = parseInt(hex.substr(3, 2), 16);
+      const b = parseInt(hex.substr(5, 2), 16);
+      updateColor(r, g, b, 'picker');
+    });
+  </script>
+</body>
+</html>
